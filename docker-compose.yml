@@ -1,0 +1,158 @@
+services:
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: openclaw-gateway
+    depends_on:
+      chromium:
+        condition: service_started
+    environment:
+      # Hardcoded paths (required – prevents host path leak)
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      NODE_ENV: production
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      # Gateway
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      # Provider API keys (set via Dokploy Environment or .env)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Custom OpenAI-compatible provider (e.g. Together, Groq, local LLM)
+      CUSTOM_OPENAI_BASE_URL: ${CUSTOM_OPENAI_BASE_URL:-}
+      CUSTOM_OPENAI_API_KEY: ${CUSTOM_OPENAI_API_KEY:-}
+      CUSTOM_OPENAI_MODEL_ID: ${CUSTOM_OPENAI_MODEL_ID:-}
+      CUSTOM_OPENAI_PROVIDER_NAME: ${CUSTOM_OPENAI_PROVIDER_NAME:-custom}
+      CUSTOM_OPENAI_SUPPORTS_IMAGES: ${CUSTOM_OPENAI_SUPPORTS_IMAGES:-false}
+      CUSTOM_OPENAI_CONTEXT_WINDOW: ${CUSTOM_OPENAI_CONTEXT_WINDOW:-200000}
+      CUSTOM_OPENAI_MAX_TOKENS: ${CUSTOM_OPENAI_MAX_TOKENS:-8192}
+      # Telegram
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Public domain (CORS for Control UI)
+      OPENCLAW_PUBLIC_URL: ${OPENCLAW_PUBLIC_URL:-}
+    volumes:
+      - openclaw_data:/home/node
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+      - "127.0.0.1:${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+    init: true
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -c
+      - |
+        INIT_MARKER="/home/node/.openclaw/.docker-init-done"
+
+        # ── Run once (first boot) ─────────────────────────────────
+        if [ ! -f "$$INIT_MARKER" ]; then
+          echo "🦞 First boot – auto-init..."
+
+          node dist/index.js onboard --mode local --no-install-daemon || true
+
+          node dist/index.js config set --batch-json \
+            '[{"path":"gateway.mode","value":"local"},{"path":"gateway.bind","value":"lan"}]' || true
+
+          touch "$$INIT_MARKER"
+          echo "✅ First-boot init done!"
+        fi
+
+        # ── Run on every start (sync config from env) ────────────
+        if [ -n "$${CUSTOM_OPENAI_BASE_URL}" ] && [ -n "$${CUSTOM_OPENAI_API_KEY}" ] && [ -n "$${CUSTOM_OPENAI_MODEL_ID}" ]; then
+          echo "🔗 Configuring custom provider..."
+          PROVIDER="$${CUSTOM_OPENAI_PROVIDER_NAME:-custom}"
+
+          # Build input types based on CUSTOM_OPENAI_SUPPORTS_IMAGES
+          if [ "$${CUSTOM_OPENAI_SUPPORTS_IMAGES}" = "true" ]; then
+            MODEL_INPUT="[\"text\",\"image\"]"
+            echo "  📸 Image/vision support: enabled"
+          else
+            MODEL_INPUT="[\"text\"]"
+            echo "  📝 Image/vision support: disabled"
+          fi
+
+          node dist/index.js config set --batch-json "[
+            {\"path\":\"models.mode\",\"value\":\"merge\"},
+            {\"path\":\"models.providers.$${PROVIDER}.baseUrl\",\"value\":\"$${CUSTOM_OPENAI_BASE_URL}\"},
+            {\"path\":\"models.providers.$${PROVIDER}.api\",\"value\":\"openai-completions\"},
+            {\"path\":\"models.providers.$${PROVIDER}.apiKey\",\"value\":\"$${CUSTOM_OPENAI_API_KEY}\"},
+            {\"path\":\"models.providers.$${PROVIDER}.models\",\"value\":[{\"id\":\"$${CUSTOM_OPENAI_MODEL_ID}\",\"name\":\"$${CUSTOM_OPENAI_MODEL_ID}\",\"input\":$${MODEL_INPUT},\"contextWindow\":$${CUSTOM_OPENAI_CONTEXT_WINDOW:-200000},\"maxTokens\":$${CUSTOM_OPENAI_MAX_TOKENS:-8192}}]}
+          ]" || true
+        fi
+
+        if [ -n "$${OPENCLAW_PUBLIC_URL}" ]; then
+          echo "🌐 Configuring public URL: $${OPENCLAW_PUBLIC_URL}"
+          node dist/index.js config set \
+            gateway.controlUi.allowedOrigins "[\"$${OPENCLAW_PUBLIC_URL}\",\"http://localhost:18789\",\"http://127.0.0.1:18789\"]" || true
+        fi
+
+        if [ -n "$${TELEGRAM_BOT_TOKEN}" ]; then
+          echo "📱 Configuring Telegram..."
+          node dist/index.js channels add --channel telegram --token "$${TELEGRAM_BOT_TOKEN}" 2>/dev/null || true
+        fi
+
+        # Configure remote browser CDP (points to chromium container)
+        echo "🌐 Configuring remote browser..."
+        node dist/index.js config set --batch-json '[
+          {"path":"browser.cdpUrl","value":"http://chromium:3000"},
+          {"path":"browser.attachOnly","value":true},
+          {"path":"browser.ssrfPolicy.allowedHostnames","value":["chromium"]}
+        ]' || true
+
+        exec node dist/index.js gateway --bind "$${OPENCLAW_GATEWAY_BIND:-lan}" --port 18789
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENCLAW_MEM_LIMIT:-4G}
+        reservations:
+          memory: ${OPENCLAW_MEM_RESERVATION:-2G}
+
+  # ── Headless Chromium (remote browser via CDP) ──────────────────────────
+  chromium:
+    image: ghcr.io/browserless/chromium:latest
+    container_name: openclaw-chromium
+    environment:
+      # Max concurrent sessions
+      MAX_CONCURRENT_SESSIONS: ${CHROMIUM_MAX_SESSIONS:-5}
+      # Per-session timeout (ms)
+      DEFAULT_LAUNCH_ARGS: '["--no-sandbox","--disable-gpu","--disable-dev-shm-usage"]'
+      CONNECTION_TIMEOUT: 300000
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${CHROMIUM_MEM_LIMIT:-2G}
+        reservations:
+          memory: ${CHROMIUM_MEM_RESERVATION:-512M}
+
+volumes:
+  openclaw_data:
+    driver: local
