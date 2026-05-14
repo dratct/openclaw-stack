@@ -125,7 +125,8 @@ These settings are **re-applied from environment variables on every container st
 
 | Config | Source env variable | Behavior |
 |--------|-------------------|----------|
-| Custom provider (base URL, API key, model, capabilities) | `CUSTOM_OPENAI_*` | Overwrites provider config every restart |
+| Custom chat provider (base URL, API key, model, capabilities) | `CHAT_*` | Overwrites chat provider config every restart |
+| Memory embedding provider (base URL, API key, model) | `EMBED_*` | Overwrites `memorySearch` config every restart |
 | CORS allowed origins | `OPENCLAW_PUBLIC_URL` | Rewrites `gateway.controlUi.allowedOrigins` every restart |
 | Telegram channel | `TELEGRAM_BOT_TOKEN` | Re-registers the channel every restart |
 | Browser CDP connection | *(hardcoded)* | Always sets `browser.cdpUrl=http://chromium:3000` |
@@ -169,30 +170,69 @@ These settings are **re-applied from environment variables on every container st
 </details>
 
 <details>
-<summary><strong>🔗 Custom OpenAI-compatible Provider</strong></summary>
+<summary><strong>💬 Custom Chat Provider (OpenAI-compatible)</strong></summary>
 
-Use any OpenAI-compatible API (Together, Groq, local LLM, etc.):
+Use any OpenAI-compatible chat/completions API (Together, Groq, LM Studio, local LLM, etc.):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CUSTOM_OPENAI_BASE_URL` | Provider base URL (e.g. `https://api.together.xyz/v1`) | — |
-| `CUSTOM_OPENAI_API_KEY` | Provider API key | — |
-| `CUSTOM_OPENAI_MODEL_ID` | Model identifier | — |
-| `CUSTOM_OPENAI_PROVIDER_NAME` | Display name in OpenClaw | `custom` |
-| `CUSTOM_OPENAI_SUPPORTS_IMAGES` | Enable vision/image capability | `false` |
-| `CUSTOM_OPENAI_CONTEXT_WINDOW` | Max input tokens | `200000` |
-| `CUSTOM_OPENAI_MAX_TOKENS` | Max output tokens | `8192` |
+| `OCS_CHAT_BASE_URL` | Provider base URL (e.g. `https://api.together.xyz/v1`) | — |
+| `OCS_CHAT_API_KEY` | Provider API key | — |
+| `OCS_CHAT_MODEL_ID` | Model identifier | — |
+| `OCS_CHAT_PROVIDER_NAME` | Display name in OpenClaw | `chat` |
+| `OCS_CHAT_SUPPORTS_IMAGES` | Enable vision/image capability | `false` |
+| `OCS_CHAT_CONTEXT_WINDOW` | Max input tokens | `200000` |
+| `OCS_CHAT_MAX_TOKENS` | Max output tokens | `8192` |
 
 **Example — Together AI:**
 
 ```env
-CUSTOM_OPENAI_BASE_URL=https://api.together.xyz/v1
-CUSTOM_OPENAI_API_KEY=sk-...
-CUSTOM_OPENAI_MODEL_ID=meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8
-CUSTOM_OPENAI_PROVIDER_NAME=together
-CUSTOM_OPENAI_SUPPORTS_IMAGES=true
-CUSTOM_OPENAI_CONTEXT_WINDOW=200000
-CUSTOM_OPENAI_MAX_TOKENS=8192
+OCS_CHAT_BASE_URL=https://api.together.xyz/v1
+OCS_CHAT_API_KEY=sk-...
+OCS_CHAT_MODEL_ID=meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8
+OCS_CHAT_PROVIDER_NAME=together
+OCS_CHAT_SUPPORTS_IMAGES=true
+OCS_CHAT_CONTEXT_WINDOW=200000
+OCS_CHAT_MAX_TOKENS=8192
+```
+
+</details>
+
+<details>
+<summary><strong>🧠 Custom Embedding Provider (OpenAI-compatible, for memory search)</strong></summary>
+
+Use a dedicated OpenAI-compatible embedding endpoint for memory search.
+If not set, OpenClaw auto-detects from `OPENAI_API_KEY` / `GOOGLE_AI_API_KEY`.
+`OCS_EMBED_API_KEY` falls back to `OCS_CHAT_API_KEY` when using the same provider for both.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OCS_EMBED_BASE_URL` | Embedding endpoint base URL | — |
+| `OCS_EMBED_API_KEY` | Embedding API key (defaults to `OCS_CHAT_API_KEY`) | — |
+| `OCS_EMBED_MODEL_ID` | Embedding model identifier | — |
+
+**Example — same provider for chat + embed:**
+
+```env
+OCS_CHAT_BASE_URL=https://api.openai.com/v1
+OCS_CHAT_API_KEY=sk-...
+OCS_CHAT_MODEL_ID=gpt-4o
+
+OCS_EMBED_BASE_URL=https://api.openai.com/v1
+OCS_EMBED_MODEL_ID=text-embedding-3-small
+# OCS_EMBED_API_KEY not needed — falls back to OCS_CHAT_API_KEY
+```
+
+**Example — separate providers (chat ≠ embed):**
+
+```env
+OCS_CHAT_BASE_URL=https://api.together.xyz/v1
+OCS_CHAT_API_KEY=sk-together-...
+OCS_CHAT_MODEL_ID=meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8
+
+OCS_EMBED_BASE_URL=https://api.openai.com/v1
+OCS_EMBED_API_KEY=sk-openai-...
+OCS_EMBED_MODEL_ID=text-embedding-3-small
 ```
 
 </details>

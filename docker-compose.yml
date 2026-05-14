@@ -23,14 +23,18 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      # Custom OpenAI-compatible provider (e.g. Together, Groq, local LLM)
-      CUSTOM_OPENAI_BASE_URL: ${CUSTOM_OPENAI_BASE_URL:-}
-      CUSTOM_OPENAI_API_KEY: ${CUSTOM_OPENAI_API_KEY:-}
-      CUSTOM_OPENAI_MODEL_ID: ${CUSTOM_OPENAI_MODEL_ID:-}
-      CUSTOM_OPENAI_PROVIDER_NAME: ${CUSTOM_OPENAI_PROVIDER_NAME:-custom}
-      CUSTOM_OPENAI_SUPPORTS_IMAGES: ${CUSTOM_OPENAI_SUPPORTS_IMAGES:-false}
-      CUSTOM_OPENAI_CONTEXT_WINDOW: ${CUSTOM_OPENAI_CONTEXT_WINDOW:-200000}
-      CUSTOM_OPENAI_MAX_TOKENS: ${CUSTOM_OPENAI_MAX_TOKENS:-8192}
+      # Custom chat provider (OpenAI-compatible, e.g. Together, Groq, local LLM)
+      OCS_CHAT_BASE_URL: ${OCS_CHAT_BASE_URL:-}
+      OCS_CHAT_API_KEY: ${OCS_CHAT_API_KEY:-}
+      OCS_CHAT_MODEL_ID: ${OCS_CHAT_MODEL_ID:-}
+      OCS_CHAT_PROVIDER_NAME: ${OCS_CHAT_PROVIDER_NAME:-chat}
+      OCS_CHAT_SUPPORTS_IMAGES: ${OCS_CHAT_SUPPORTS_IMAGES:-false}
+      OCS_CHAT_CONTEXT_WINDOW: ${OCS_CHAT_CONTEXT_WINDOW:-200000}
+      OCS_CHAT_MAX_TOKENS: ${OCS_CHAT_MAX_TOKENS:-8192}
+      # Custom embedding provider for memory search (OpenAI-compatible)
+      OCS_EMBED_BASE_URL: ${OCS_EMBED_BASE_URL:-}
+      OCS_EMBED_API_KEY: ${OCS_EMBED_API_KEY:-}
+      OCS_EMBED_MODEL_ID: ${OCS_EMBED_MODEL_ID:-}
       # Telegram
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Public domain (CORS for Control UI)
@@ -71,12 +75,12 @@ services:
         fi
 
         # ── Run on every start (sync config from env) ────────────
-        if [ -n "$${CUSTOM_OPENAI_BASE_URL}" ] && [ -n "$${CUSTOM_OPENAI_API_KEY}" ] && [ -n "$${CUSTOM_OPENAI_MODEL_ID}" ]; then
-          echo "🔗 Configuring custom provider..."
-          PROVIDER="$${CUSTOM_OPENAI_PROVIDER_NAME:-custom}"
+        if [ -n "$${OCS_CHAT_BASE_URL}" ] && [ -n "$${OCS_CHAT_API_KEY}" ] && [ -n "$${OCS_CHAT_MODEL_ID}" ]; then
+          echo "🔗 Configuring custom chat provider..."
+          CHAT_PROVIDER="$${OCS_CHAT_PROVIDER_NAME:-chat}"
 
-          # Build input types based on CUSTOM_OPENAI_SUPPORTS_IMAGES
-          if [ "$${CUSTOM_OPENAI_SUPPORTS_IMAGES}" = "true" ]; then
+          # Build input types based on OCS_CHAT_SUPPORTS_IMAGES
+          if [ "$${OCS_CHAT_SUPPORTS_IMAGES}" = "true" ]; then
             MODEL_INPUT="[\"text\",\"image\"]"
             echo "  📸 Image/vision support: enabled"
           else
@@ -86,11 +90,21 @@ services:
 
           node dist/index.js config set --batch-json "[
             {\"path\":\"models.mode\",\"value\":\"merge\"},
-            {\"path\":\"models.providers.$${PROVIDER}.baseUrl\",\"value\":\"$${CUSTOM_OPENAI_BASE_URL}\"},
-            {\"path\":\"models.providers.$${PROVIDER}.api\",\"value\":\"openai-completions\"},
-            {\"path\":\"models.providers.$${PROVIDER}.apiKey\",\"value\":\"$${CUSTOM_OPENAI_API_KEY}\"},
-            {\"path\":\"models.providers.$${PROVIDER}.models\",\"value\":[{\"id\":\"$${CUSTOM_OPENAI_MODEL_ID}\",\"name\":\"$${CUSTOM_OPENAI_MODEL_ID}\",\"input\":$${MODEL_INPUT},\"contextWindow\":$${CUSTOM_OPENAI_CONTEXT_WINDOW:-200000},\"maxTokens\":$${CUSTOM_OPENAI_MAX_TOKENS:-8192}}]}
+            {\"path\":\"models.providers.$${CHAT_PROVIDER}.baseUrl\",\"value\":\"$${OCS_CHAT_BASE_URL}\"},
+            {\"path\":\"models.providers.$${CHAT_PROVIDER}.api\",\"value\":\"openai-completions\"},
+            {\"path\":\"models.providers.$${CHAT_PROVIDER}.models\",\"value\":[{\"id\":\"$${OCS_CHAT_MODEL_ID}\",\"name\":\"$${OCS_CHAT_MODEL_ID}\",\"input\":$${MODEL_INPUT},\"contextWindow\":$${OCS_CHAT_CONTEXT_WINDOW:-200000},\"maxTokens\":$${OCS_CHAT_MAX_TOKENS:-8192}}]}
           ]" || true
+          node dist/index.js config set models.providers.$${CHAT_PROVIDER}.apiKey '$${OCS_CHAT_API_KEY}' || true
+        fi
+
+        if [ -n "$${OCS_EMBED_BASE_URL}" ] && [ -n "$${OCS_EMBED_MODEL_ID}" ]; then
+          echo "🧠 Configuring memory embedding provider..."
+          node dist/index.js config set --batch-json "[
+            {\"path\":\"agents.defaults.memorySearch.provider\",\"value\":\"openai\"},
+            {\"path\":\"agents.defaults.memorySearch.model\",\"value\":\"$${OCS_EMBED_MODEL_ID}\"},
+            {\"path\":\"agents.defaults.memorySearch.remote.baseUrl\",\"value\":\"$${OCS_EMBED_BASE_URL}\"}
+          ]" || true
+          node dist/index.js config set agents.defaults.memorySearch.remote.apiKey '$${OCS_EMBED_API_KEY}' || true
         fi
 
         if [ -n "$${OPENCLAW_PUBLIC_URL}" ]; then
