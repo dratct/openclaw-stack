@@ -113,7 +113,7 @@ These settings are applied **only on the very first start** and never again. The
 |--------|-------------|
 | `onboard --mode local` | Runs the interactive onboarding wizard in non-interactive mode |
 | `gateway.mode = local` | Sets gateway to local mode |
-| `gateway.bind = lan` | Binds gateway to LAN interface |
+| `gateway.bind` | Sets gateway bind to the value of `OPENCLAW_GATEWAY_BIND` (default: `lan`) |
 
 > [!NOTE]
 > After the first boot, these settings are **yours to customize** via the Control UI or CLI.
@@ -149,6 +149,8 @@ These settings are **re-applied from environment variables on every container st
 |----------|-------------|---------|
 | `OPENCLAW_GATEWAY_TOKEN` | Auth token (auto-generated on first boot) | — |
 | `OPENCLAW_GATEWAY_PORT` | Control UI port mapping | `18789` |
+| `OPENCLAW_GATEWAY_BIND` | Gateway process bind mode inside the container: `lan`, `loopback`, `tailnet`, `auto`, or `custom`. Must be `lan` (default) for Docker port mapping to work. | `lan` |
+| `OPENCLAW_LISTEN_HOST` | Docker host bind address: `127.0.0.1` (local only) or `0.0.0.0` (public). This is the primary security layer controlling external access. | `127.0.0.1` |
 | `OPENCLAW_PUBLIC_URL` | Public domain for CORS | — |
 | `TZ` | Timezone | `Asia/Ho_Chi_Minh` |
 
@@ -258,10 +260,23 @@ This stack follows container security best practices:
 - **Capability dropping** — `NET_RAW` and `NET_ADMIN` removed
 - **No privilege escalation** — `no-new-privileges:true`
 - **Resource limits** — Memory capped at 4 GB (gateway) + 2 GB (browser)
-- **Local port binding** — Ports bound to `127.0.0.1` by default
+- **Local port binding** — Ports bound to `127.0.0.1` by default (configurable via `OPENCLAW_LISTEN_HOST`)
 
 > [!IMPORTANT]
 > For production, always place behind a reverse proxy (Traefik, Nginx, Caddy) with TLS.
+
+### Exposing Publicly
+
+By default, ports are only accessible from `localhost` (`OPENCLAW_LISTEN_HOST=127.0.0.1`). To expose publicly, change the Docker host bind address:
+
+```env
+# .env — enable public access
+OPENCLAW_LISTEN_HOST=0.0.0.0
+OPENCLAW_PUBLIC_URL=https://openclaw.example.com
+```
+
+> [!NOTE]
+> `OPENCLAW_GATEWAY_BIND` defaults to `lan` — this is required for Docker port mapping to work and should not be changed to `loopback` in containerized deployments. Access control from external networks is handled by `OPENCLAW_LISTEN_HOST`.
 
 ## 📊 Volumes
 

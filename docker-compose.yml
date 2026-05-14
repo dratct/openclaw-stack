@@ -35,6 +35,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Public domain (CORS for Control UI)
       OPENCLAW_PUBLIC_URL: ${OPENCLAW_PUBLIC_URL:-}
+      # Gateway bind mode
+      OPENCLAW_GATEWAY_BIND: ${OPENCLAW_GATEWAY_BIND:-lan}
     volumes:
       - openclaw_data:/home/node
     cap_drop:
@@ -45,8 +47,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
-      - "127.0.0.1:${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+      - "${OPENCLAW_LISTEN_HOST:-127.0.0.1}:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+      - "${OPENCLAW_LISTEN_HOST:-127.0.0.1}:${OPENCLAW_BRIDGE_PORT:-18790}:18790"
     init: true
     restart: unless-stopped
     command:
@@ -62,7 +64,7 @@ services:
           node dist/index.js onboard --mode local --no-install-daemon || true
 
           node dist/index.js config set --batch-json \
-            '[{"path":"gateway.mode","value":"local"},{"path":"gateway.bind","value":"lan"}]' || true
+            '[{"path":"gateway.mode","value":"local"},{"path":"gateway.bind","value":"'"$${OPENCLAW_GATEWAY_BIND:-lan}"'"}]' || true
 
           touch "$$INIT_MARKER"
           echo "✅ First-boot init done!"
