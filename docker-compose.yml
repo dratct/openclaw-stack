@@ -93,7 +93,7 @@ services:
             {\"path\":\"models.providers.$${CHAT_PROVIDER}.baseUrl\",\"value\":\"$${OCS_CHAT_BASE_URL}\"},
             {\"path\":\"models.providers.$${CHAT_PROVIDER}.api\",\"value\":\"openai-completions\"},
             {\"path\":\"models.providers.$${CHAT_PROVIDER}.models\",\"value\":[{\"id\":\"$${OCS_CHAT_MODEL_ID}\",\"name\":\"$${OCS_CHAT_MODEL_ID}\",\"input\":$${MODEL_INPUT},\"contextWindow\":$${OCS_CHAT_CONTEXT_WINDOW:-200000},\"maxTokens\":$${OCS_CHAT_MAX_TOKENS:-8192}}]}
-          ]" || true
+          ]" --replace || true
           node dist/index.js config set models.providers.$${CHAT_PROVIDER}.apiKey '$${OCS_CHAT_API_KEY}' || true
         fi
 
